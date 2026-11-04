@@ -1,59 +1,76 @@
-from langchain_core.messages import HumanMessage
+"""Terminal entrypoint for the unified Harness-based Todo Agent."""
 
-from database.checkpointer import create_checkpointer
-from graph.builder import build_graph
-from graph.context import TodoContext
+from __future__ import annotations
+
+from uuid import uuid4
+
+from database.schema import initialize_database
+from harness.agent_loop import AgentLoop, LoopBudget
+from harness.openai_compatible_model import OpenAICompatibleModelInvoker
+from harness.instructions import SYSTEM_INSTRUCTION
+from harness.security import PermissionPolicy
+from harness.tool_protocol import ToolCallContext
+from harness.todo_tools import build_todo_tool_registry
+from ops.observability import configure_logging
+from ops.runtime import ConfigurationError, load_config
 
 
-USER_ID = "aman"
-THREAD_ID = "default-thread"
+def main() -> int:
+    try:
+        config = load_config()
+        config.ensure_directories()
+        initialize_database(config.database_path)
+    except (ConfigurationError, OSError, RuntimeError) as error:
+        print(f"Startup failed: {type(error).__name__}: {error}")
+        return 1
+    if not config.groq_api_key:
+        print("ZHIPU_API_KEY is not configured; set it in the environment before starting the CLI.")
+        return 1
 
+    configure_logging(config.log_level)
+    user_id = input("User name [aman]: ").strip() or "aman"
+    session_key = f"cli:{user_id}"
+    history = []
 
-def main() -> None:
-    """Run the Todo Agent terminal application."""
+    def confirm(context, call, spec) -> bool:
+        answer = input(f"Confirm high-risk action '{spec.name}'? [y/N] ").strip().lower()
+        return answer in {"y", "yes"}
 
-    config = {
-        "configurable": {
-            "thread_id": THREAD_ID,
-        }
-    }
-
-    context = TodoContext(
-        user_id=USER_ID,
+    loop = AgentLoop(
+        OpenAICompatibleModelInvoker(
+            config.groq_api_key,
+            model_name=config.model_name,
+            base_url=config.model_base_url,
+            temperature=config.model_temperature,
+        ),
+        build_todo_tool_registry(),
+        system_instruction=SYSTEM_INSTRUCTION,
+        budget=LoopBudget(
+            max_tool_calls=config.max_tool_calls,
+            model_timeout_seconds=config.model_timeout_seconds,
+        ),
+        authorization=PermissionPolicy(confirmation_callback=confirm),
     )
-
-    with create_checkpointer() as checkpointer:
-        graph = build_graph(checkpointer)
-
-        print("Todo Agent started.")
-        print(f"User ID: {USER_ID}")
-        print(f"Thread ID: {THREAD_ID}")
-        print("Type 'exit' or 'quit' to stop the application.")
-
-        while True:
-            user_input = input("\nYou: ").strip()
-
-            if not user_input:
-                continue
-
-            if user_input.lower() in {"exit", "quit"}:
-                print("Todo Agent stopped.")
-                break
-
-            result = graph.invoke(
-                {
-                    "messages": [
-                        HumanMessage(content=user_input)
-                    ]
-                },
-                config=config,
-                context=context,
-            )
-
-            assistant_message = result["messages"][-1]
-
-            print(f"\nAssistant: {assistant_message.content}")
+    print("Todo Agent started. Type 'exit' or 'quit' to stop.")
+    while True:
+        user_input = input("\nYou: ").strip()
+        if not user_input:
+            continue
+        if user_input.lower() in {"exit", "quit"}:
+            print("Todo Agent stopped.")
+            return 0
+        context = ToolCallContext(
+            user_id=user_id,
+            request_id=f"cli:{uuid4().hex}",
+            session_key=session_key,
+        )
+        result = loop.run(user_input, context, history=history)
+        if result.ok:
+            history = list(result.messages[1:])
+            print(f"\nAssistant: {result.final_response or '已完成。'}")
+        else:
+            print(f"\nAssistant error: {result.error.code}: {result.error.message}")
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

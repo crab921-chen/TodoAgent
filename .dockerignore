@@ -1,0 +1,12 @@
+.env
+.git
+.github
+.streamlit
+__pycache__
+*.pyc
+*.db
+*.db-*
+backups
+docx
+tests
+tmp*

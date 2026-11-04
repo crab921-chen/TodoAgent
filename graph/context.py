@@ -1,8 +1,5 @@
-from dataclasses import dataclass
+"""Compatibility export for the archived LangGraph context."""
 
+from legacy.langgraph_app.context import TodoContext
 
-@dataclass(frozen=True)
-class TodoContext:
-    """Trusted runtime context available during graph execution."""
-
-    user_id: str
+__all__ = ["TodoContext"]

@@ -1,45 +1,25 @@
-import sqlite3
+"""Database initialization entry point backed by versioned migrations."""
+
+from __future__ import annotations
+
+import os
 from pathlib import Path
 
+from database.migrations import apply_migrations
 
-DATABASE_PATH = Path(__file__).resolve().parent / "todo.db"
+
+DATABASE_PATH = Path(
+    os.getenv("TODO_DATABASE_PATH", str(Path(__file__).resolve().parent / "todo.db"))
+)
 
 
-def initialize_database() -> None:
-    """Create the SQLite database and required tables."""
+def initialize_database(database_path: str | Path | None = None) -> tuple[str, ...]:
+    """Initialize or upgrade the database and return newly applied versions."""
 
-    connection = sqlite3.connect(DATABASE_PATH)
-
-    try:
-        cursor = connection.cursor()
-
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_tasks_user_id
-            ON tasks(user_id)
-            """
-        )
-
-        connection.commit()
-
-    finally:
-        connection.close()
+    return apply_migrations(database_path or DATABASE_PATH)
 
 
 if __name__ == "__main__":
-    initialize_database()
+    applied = initialize_database()
     print(f"Database initialized successfully at: {DATABASE_PATH}")
+    print(f"Applied migrations: {', '.join(applied) or 'none'}")

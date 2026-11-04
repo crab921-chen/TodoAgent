@@ -1,33 +1,5 @@
-import json
+"""Compatibility export for the original LangChain delete-task tool."""
 
-from langchain.tools import ToolRuntime
-from langchain_core.tools import tool
+from legacy.langgraph_tools.delete_task import delete_task_tool
 
-from database.db import delete_task
-from graph.context import TodoContext
-
-
-@tool
-def delete_task_tool(
-    task_id: int,
-    runtime: ToolRuntime[TodoContext],
-) -> str:
-    """Delete a task belonging to the authenticated user.
-
-    Use this tool when the user wants to remove or delete a task.
-
-    Args:
-        task_id: The unique integer ID of the task to delete.
-    """
-
-    deleted = delete_task(
-        user_id=runtime.context.user_id,
-        task_id=task_id,
-    )
-
-    return json.dumps(
-        {
-            "task_id": task_id,
-            "deleted": deleted,
-        }
-    )
+__all__ = ["delete_task_tool"]

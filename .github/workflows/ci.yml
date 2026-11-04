@@ -1,0 +1,53 @@
+name: Todo Agent CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Format and static checks
+        run: python tools/ci_checks.py --release
+      - name: Compile check
+        run: python -m compileall -q app.py cli.py database graph harness legacy ops prompts tests tools
+      - name: Test suite
+        env:
+          APP_ENV: test
+          GROQ_API_KEY: ""
+        run: >-
+          python -m unittest
+          tests.test_tool_protocol tests.test_agent_loop tests.test_m1_remaining
+          tests.test_m2_data tests.test_m3_data tests.test_m4_data
+          tests.test_m5_delivery tests.test_m6_conversations tests.test_m8_tasks
+      - name: Dependency check
+        run: python -m pip check
+      - name: Container build check
+        run: docker build --file deploy/Dockerfile --tag todo-agent:ci .
+      - name: Startup configuration check
+        env:
+          APP_ENV: test
+          TODO_DATABASE_PATH: database/ci-todo.db
+          TODO_CHECKPOINT_DATABASE_PATH: database/ci-checkpoints.db
+        run: python -m ops.startup_check
+      - name: Release signoff
+        run: python tools/release_signoff.py --output release-signoff.json
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-signoff
+          path: release-signoff.json
+          if-no-files-found: ignore

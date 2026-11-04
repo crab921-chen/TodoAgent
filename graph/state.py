@@ -1,9 +1,5 @@
-from typing import Annotated
+"""Compatibility export for the archived LangGraph state."""
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
-from typing_extensions import TypedDict
+from legacy.langgraph_app.state import AgentState
 
-
-class AgentState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+__all__ = ["AgentState"]
